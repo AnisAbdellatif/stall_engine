@@ -57,6 +57,26 @@ local function set_config(key, value)
     print("Config updated: " .. key .. " = " .. value)
 end
 
+local function ignitionEnabledChangedHandler(value)
+    if value and (not Ignition_btn or not Ignition_btn:configured()) then
+        print("Warning: Ignition button is not configured. Please set it in the controls menu.")
+        ac.setMessage("stall_engine: Ignition button (Extra D) is not configured. Disabling ignition!", "", nil, 3)
+        return false
+    else
+        return true
+    end
+end
+
+local function EnabledChangedHandler(value)
+    if value and (not Start_btn or not Start_btn:configured()) then
+        print("Warning: Start button is not configured. Please set it in the controls menu.")
+        ac.setMessage("stall_engine: Start button (Extra E) is not configured. Disabling stall_engine!", "", nil, 3)
+        return false
+    else
+        return true
+    end
+end
+
 local AlreadySetup = false
 function script.onWindowShow()
     print("Stall Engine app window shown.")
@@ -86,44 +106,57 @@ function script.onWindowShow()
     
     Ignition_btn = ac.ControlButton('__EXT_LIGHT_D', nil)
     Start_btn = ac.ControlButton('__EXT_LIGHT_E', nil)
-    if not Ignition_btn or not Ignition_btn:configured() then
-        print("Warning: Ignition button is not configured. Please set it in the controls menu.")
-        IgnitionEnabled = false
-    elseif IgnitionEnabled then
-        Ignition_btn:onPressed(function()
-            if not IgnitionEnabled then
-                print("Warning: Ignition is not enabled.")
-                return
-            end
-            IgnitionOn = not IgnitionOn
-            print("Ignition is set to " .. (IgnitionOn and "ON" or "OFF"))
-            if IgnitionOn then
-                playSound(ignition_sound)
-            end
-        end)
+
+    if not EnabledChangedHandler(Enabled) then
+        Enabled = false
+        set_config('ENABLED', 'false')
     end
     
-    if not Start_btn or not Start_btn:configured() then
-        print("Warning: Start button is not configured. Please set it in the controls menu.")
-        Enabled = false
+    if IgnitionEnabled then
+        if not ignitionEnabledChangedHandler(IgnitionEnabled) then
+            IgnitionEnabled = false
+            set_config('IGNITION_ENABLED', 'false')
+        else
+            Ignition_btn:onPressed(function()
+                if not IgnitionEnabled then
+                    print("Warning: Ignition is not enabled.")
+                    ac.setMessage("stall_engine: Ignition is not enabled.", "", nil, 1)
+                    return
+                end
+                IgnitionOn = not IgnitionOn
+                print("Ignition is set to " .. (IgnitionOn and "ON" or "OFF"))
+                if IgnitionOn then
+                    playSound(ignition_sound)
+                end
+            end)
+        end
     end
-
+    
     AlreadySetup = true
 end
 
 function script.windowMain(dt)
     ac.setWindowBackground('windowMain', rgbm(0.6, 0.6, 0.6, 0.5), true)
 
+    Enabled_input = Enabled
     if ui.checkbox("Enable Stall", Enabled_input) then
         Enabled_input = not Enabled_input
         if Enabled_input ~= Enabled then
-            set_config('ENABLED', tostring(Enabled_input))
             Enabled = Enabled_input
+            if not EnabledChangedHandler(Enabled) then
+                Enabled = false
+            else
+                set_config('ENABLED', tostring(Enabled))
+                ac.setMessage("stall_engine: " .. (Enabled and "Enabled" or "Disabled"), "", nil, 1)
+            end
         end
     end
 
     if ui.checkbox("Ignition Required", IgnitionEnabled) then
         IgnitionEnabled = not IgnitionEnabled
+        if not ignitionEnabledChangedHandler(IgnitionEnabled) then
+            IgnitionEnabled = false
+        end
         set_config('IGNITION_ENABLED', tostring(IgnitionEnabled))
     end
 
@@ -184,16 +217,6 @@ function script.update(dt)
     local rpm = ac.getCar().rpm or 0.0
     local gear = ac.getCar().gear or 0.0
     local clutch = ac.getCar().clutch or 1.0
-
-    -- print("Current RPM: " .. rpm)
-    -- print("Current Gear: " .. gear)
-    -- print("Current Clutch: " .. clutch)
-    -- print("Current Gas: " .. gas)
-
-    -- if rpm < StallRpm and EngineOn then
-    --     EngineOn = false
-    --     print("Engine stopped.")
-    -- end
 
     if clutch > ClutchBitePoint and rpm < StallRpm and (gear > 0 or gear == -1) then
         if not IsStalling and EngineOn then
