@@ -1,0 +1,36 @@
+name: Create Release
+
+on:
+    push:
+        tags:
+            - "v*" # Trigger on version tags like v1.0.0
+
+jobs:
+    build-and-release:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Get repo name
+              id: vars
+              run: echo "REPO_NAME=$(basename $GITHUB_REPOSITORY)" >> $GITHUB_ENV
+
+            - name: Create folder with repo name and zip it
+              run: |
+                  mkdir $REPO_NAME
+                  shopt -s dotglob
+                  cp -r * $REPO_NAME
+                  zip -r $REPO_NAME.zip $REPO_NAME \
+                    -x "$REPO_NAME/.git/*" \
+                      "$REPO_NAME/.github/*" \
+                      "$REPO_NAME/README.md" \
+                      "$REPO_NAME/.gitignore"
+
+            - name: Create Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: ${{ env.REPO_NAME }}.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
